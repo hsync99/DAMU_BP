@@ -1,0 +1,137 @@
+--03.04.2023 -- MASTER --  task_order_comm_done - Исполнение
+
+local found_entity,errText,errNum = SqlQueryRow2([[select id from entities where code=?]],var.entity_code)
+if errNum~=0 then
+    var.last_error = errText
+    return
+end
+
+local found_id,errText,errNum = SqlQueryRow2([[select id, registration from ]].. var.entity_code..[[ where sys$uuid=?]],var.pk_uuid)
+--Запись найдена, проверим полномочия
+if errNum == 0 then
+
+    errText,errNum = CheckGrantOfEntity(sys.user_id, var.entity_code, "is_detail_view", found_id.id)
+    
+    if errNum~=0 then
+        var.last_error = errText
+        return
+    end    
+else
+        var.last_error = errText
+        return
+end
+
+if found_id~=nil then
+    if found_id.registration==nil then
+        var.last_error = "Отсутствует регистрационный номер ОРД. Нажмите кнопку Регистрация"
+        return
+    end
+end
+
+-- errText,errNum=SqlExec2([[update its_req
+--     set stat_id = (select id from its_req_stat where code='in_close')
+--     where id=(select req_id from ]]..var.entity_code..[[ where sys$uuid=?)]], var.pk_uuid )
+
+-- if errNum~=0 then
+--     var.last_error=errText..', its_req'
+-- end
+
+
+-- errText,errNum=SqlExec2([[update tasks
+--     set status_id = (select id from task_statuses where code='closed') 
+--     where step_nn=? and entity_pk=? and manager_id=?]], var.step_nn , var.pk_uuid , sys.user_id )
+
+-- if errNum~=0 then
+--     var.last_error=errText.."tasks"
+-- end
+steps = SqlQueryRow2([[
+    select count(*)
+    from tasks t
+    where t.entity_pk=?]],var.pk_uuid)
+steps2 = 9 - tonumber(steps.count)
+  
+if tonumber(steps.count) <=9 then
+
+if steps2 ~= 0 then 
+
+     task_new2, errText,errNum = SqlQueryRows([[
+        select t.entity_id, t.entity_pk,  t.title, t.type_id, t.manager_id, 
+                t.instance_id, t.id, t.step_nn, t.approve_t_s_id, t.sys$uuid as task
+        from tasks t
+        where t.entity_pk=? and t.step_nn = ? ]],var.pk_uuid,5-steps2)
+            if errNum~=0 then
+                var.last_error = "Ошибка при поиске задачи "..errText..', 4'
+                return
+            end 
+        else
+            task_new2, errText,errNum = SqlQueryRows([[
+        select t.entity_id, t.entity_pk,  t.title, t.type_id, t.manager_id, 
+                t.instance_id, t.id, t.step_nn, t.approve_t_s_id, t.sys$uuid as task
+        from tasks t
+        where t.entity_pk=? and t.step_nn = ? ]],var.pk_uuid,5)
+            if errNum~=0 then
+                var.last_error = "Ошибка при поиске задачи "..errText..', 4'
+                return
+            end 
+    end 
+end
+if tonumber(steps.count) >= 10 then
+    task_new2, errText,errNum = SqlQueryRows([[
+        select t.entity_id, t.entity_pk,  t.title, t.type_id, t.manager_id, 
+                t.instance_id, t.id, t.step_nn, t.approve_t_s_id, t.sys$uuid as task
+        from tasks t
+        where t.entity_pk=? and t.step_nn = ? ]],var.pk_uuid,5)
+            if errNum~=0 then
+                var.last_error = "Ошибка при поиске задачи "..errText..', 4'
+                return
+            end 
+           
+end
+    local json_users = StringToJson(var.users)
+
+        -- error(tostring(#json_users))
+        -- local long_text = {}
+        -- long_text.prover = JsonToString(task_new2)
+        --     -- local txt_copy = JsonToString(long_text)
+        -- errText,errNum = SqlExec2([[insert into its_tst_entity_bk (long_text) values(?)]],long_text)
+        
+        if #json_users>0 then 
+                local step_nn=5
+                
+            m_user_id, errText,errNum = SqlQueryRow2 ("select id from users where title = 'Исполнитель'")
+                
+            if m_user_id~=nil then
+                errText,errNum = SqlExec2([[delete from tasks 
+                        where entity_pk=? and step_nn=? and manager_id=?]], var.pk_uuid, step_nn , m_user_id.id )
+                
+                -- if errNum~=0 then
+                --     var.last_error = errText
+                --     return
+                -- end
+            end
+            
+                for i,v in ipairs(json_users) do
+                        stat_id, errText,errNum = SqlQueryRow2 ("select id from task_statuses where code = 'opened'")
+                        
+                        if errNum~=0 then
+                            var.last_error = errText
+                            return
+                        end
+                        -- error(tostring(stat_id.id))
+                errText,errNum = SqlExec2([[insert into tasks (status_id ,entity_id, entity_pk, title, manager_id, type_id, approve_t_s_id, instance_id, step_nn) 
+                        values (?,?,?,?,?,?,?,?,?)]],
+                stat_id.id, task_new2[1].entity_id, var.pk_uuid, 'Исполнение', v.user_id, task_new2[1].type_id, 
+                task_new2[1].approve_t_s_id, task_new2[1].instance_id, step_nn)
+            
+             -- error(tostring(stat_id.id))
+                            if errNum~=0 then
+                                var.last_error = "Ошибка при добавлении задачи "..errText ..', 7'
+                                return
+                            end
+
+                end
+        
+        
+ 
+
+end -- steps2 ~= 0 then 
